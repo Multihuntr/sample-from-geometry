@@ -18,17 +18,14 @@ geom = shapely.Polygon([
     [88, 146], [116, 181], [20, 170], [49, 132], [18, 103]
 ])
 points = sample_uniform_from_geom(geom, 10000)
-# A polygon with a hole in it
-outer = shapely.box(0, 0, 200, 200)
-geom_w_hole = shapely.difference(outer, geom)
-points = sample_uniform_from_geom(geom_w_hole, 10000)
 ```
 
-<img src='./img/star.png' alt='A star with sampled points' width=400 />
-<img src='./img/random_simple.png' alt='A random shape with sampled points' width=400 />
-<img src='./img/as_hole.png' alt='A box with random shape cut out of it with sampled points' width=400 />
 
-Works for arbitrarily complex geometries. But it can be a bit slow when the number of vertices gets large (see [Speed](#speed))
+Star                                    | Random shape
+:--------------------------------------:|:--------------------------------------:
+<img src='./img/star.png' width=300 />  | <img src='./img/random_simple.png' width=300 />
+
+Works for arbitrarily complex geometries. Both geometries with holes in them, and geometries with thousands of vertices at weird, small angles. However, it can be a bit slow when the number of vertices gets large (see [Speed](#speed))
 
 ```python
 from sampling import sample_uniform_from_geom
@@ -39,11 +36,18 @@ geom = shapely.Polygon([
     [170, 94], [120, 80], [83, 113], [153, 143], [172, 180],
     [88, 146], [116, 181], [20, 170], [49, 132], [18, 103]
 ])
-geom = complicate_shape(geom, 1)
-points = sample_uniform_from_geom(geom, 50000)
+# A polygon with a hole in it
+outer = shapely.box(0, 0, 200, 200)
+geom_w_hole = shapely.difference(outer, geom)
+points = sample_uniform_from_geom(geom_w_hole, 10000)
+# A complicated polygon
+complicated_geom = complicate_shape(geom, 1)
+points = sample_uniform_from_geom(complicated_geom, 50000)
 ```
 
-<img src='./img/random_complex.png' alt='A random very complicated shape with sampled points' width=400 />
+Random hole                                | Random complicated geometry
+:-----------------------------------------:|:------------------------------------------------:
+<img src='./img/as_hole.png' width=300 />  | <img src='./img/random_complex.png' width=300 />
 
 
 Caveats:
