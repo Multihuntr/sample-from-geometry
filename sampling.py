@@ -118,7 +118,8 @@ def sample_uniform_from_geom_closed(shp, n=1, rng=None):
     d_x = np.sqrt(d_lo[~square] ** 2 + 2 * slope[~square] * (d[~square] - cd_lo[~square]))
     x_t[~square] = x_lo[~square] + (d_x - d_lo[~square]) / slope[~square]
     # Note: at the start we assumed x \in [0, x_hi-x_lo]; we add in x_lo to make x_t \in [x_lo, x_hi]
-    # For perfectly square cases, the slope is zero, and we get invalid values
+
+    # Edge case; square; above formula gives invalid values
     # In such cases it is sufficient to do simple linear interpolation.
     t = interp1d_inv(cd_lo[square], d[square], cd_hi[square])
     x_t[square] = interp1d(x_lo[square], x_hi[square], t)
