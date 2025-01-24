@@ -1,6 +1,7 @@
 import shapely
 import numpy as np
 
+
 def interp1d(a, b, t=0.5):
     """
     Calculates the value at t between a and b.
@@ -18,6 +19,10 @@ def interp1d_inv(a, c, b):
 
 
 def density_1d(shp):
+    """
+    Calculate the point masses and densities between those point masses
+    across the first dimension
+    """
     xlo, ylo, xhi, yhi = shp.bounds
     xs = shapely.get_coordinates(shp)[:, 0]
     xs = np.unique(xs)
@@ -26,6 +31,7 @@ def density_1d(shp):
     line_coords = np.array([[[x, ylo], [x, yhi]] for x in xs])
 
     lines = shapely.linestrings(line_coords)
+    shapely.prepare(lines)
     inter_lines = shapely.intersection(shp, lines)
 
     point_mass = shapely.length(inter_lines)
@@ -37,9 +43,33 @@ def density_1d(shp):
     return xs, point_mass, densities
 
 
-def sample_uniform_from_geom(shp, n=1, rng=None):
-    """Sample uniformly from an arbitrary 2D geometry, n times."""
+def _coverage(shp):
+    return shp.area / shapely.box(*shp.bounds).area
 
+
+def est_rejection_time(c, slope=0.04, bias=0):
+    # Slope and bias estimated through an external process
+    return 1 / c * slope + bias
+
+
+def est_closed_time(n, slope=0.017, bias=2.4):
+    # Slope and bias estimated through an external process
+    return n * np.log(n) * slope + bias
+
+
+def sample_uniform_from_geom(shp, n=1, rng=None):
+    # Choose algorithm based on estimated times for each.
+    rej_time = est_rejection_time(_coverage(shp))
+    n_coords = len(shapely.get_coordinates(shp))
+    closed_time = est_closed_time(n_coords)
+    if rej_time < closed_time:
+        return sample_uniform_from_geom_rejection(shp, n, rng)
+    else:
+        return sample_uniform_from_geom_closed(shp, n, rng)
+
+
+def sample_uniform_from_geom_closed(shp, n=1, rng=None):
+    """Sample uniformly from an arbitrary 2D geometry, n times."""
     shapely.prepare(shp)
 
     # Calculate an unnormalised density function along one dimension
@@ -81,12 +111,15 @@ def sample_uniform_from_geom(shp, n=1, rng=None):
     # We only want the positive case, so:
     #   => x = sqrt(d_lo**2 - 2*slope*(cd_lo-d) - d_lo) / slope
     slope = (d_hi - d_lo) / (x_hi - x_lo)
-    with np.errstate(invalid="ignore"):
-        x_t = x_lo + (np.sqrt(d_lo**2 + 2 * slope * (d - cd_lo)) - d_lo) / slope
+    square = slope == 0
+    x_t = np.zeros_like(x_lo)
+
+    # Default case; not square
+    d_x = np.sqrt(d_lo[~square] ** 2 + 2 * slope[~square] * (d[~square] - cd_lo[~square]))
+    x_t[~square] = x_lo[~square] + (d_x - d_lo[~square]) / slope[~square]
     # Note: at the start we assumed x \in [0, x_hi-x_lo]; we add in x_lo to make x_t \in [x_lo, x_hi]
     # For perfectly square cases, the slope is zero, and we get invalid values
     # In such cases it is sufficient to do simple linear interpolation.
-    square = slope == 0
     t = interp1d_inv(cd_lo[square], d[square], cd_hi[square])
     x_t[square] = interp1d(x_lo[square], x_hi[square], t)
 
@@ -102,3 +135,26 @@ def sample_uniform_from_geom(shp, n=1, rng=None):
     points = np.stack([x_t, y_u], axis=1)
 
     return points
+
+
+def sample_uniform_from_geom_rejection(shp, n=1, rng=None):
+    shapely.prepare(shp)  # Very important optimisation; like 10x faster
+
+    # Repeatedly sample points until we have enough points
+    found_points = np.array([]).reshape((0, 2))
+    xlo, ylo, xhi, yhi = shp.bounds
+    c = _coverage(shp)
+    while len(found_points) < n:
+        # Estimate the number to sample based on geometry coverage and missing points
+        to_sample = int((n - len(found_points)) / c * 1.05)
+
+        # Sample new points
+        new_points = rng.uniform((xlo, ylo), (xhi, yhi), size=(to_sample, 2))
+
+        # Add all new points that are inside the geometry to our list of found points
+        new_points_shp = shapely.points(new_points)
+        include = shapely.contains(shp, new_points_shp)
+        found_points = np.concatenate([found_points, new_points[include]])
+
+    # Return just the first n (we may have sampled more than we needed)
+    return found_points[:n]
